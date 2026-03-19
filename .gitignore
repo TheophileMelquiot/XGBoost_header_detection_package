@@ -1,0 +1,38 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual env
+venv/
+.env/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# ML models (IMPORTANT)
+*.pkl
+*.joblib
+*.h5
+*.pt
+
+# Data files
+*.csv
+*.xlsx
+
+# IDE
+.vscode/
+.idea/
