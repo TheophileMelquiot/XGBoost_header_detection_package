@@ -4,14 +4,19 @@ A Python package that automatically detects header rows in Excel files using a t
 
 ## Installation
 
+Install the package directly from GitHub using pip:
+
 ```bash
-pip install -r requirements.txt
-```
+pip install git+https://github.com/TheophileMelquiot/XGBoost_header_detection_package.git
 
 Or install directly with pip:
 
 ```bash
 pip install pandas numpy openpyxl lightgbm scikit-learn joblib
+```
+
+```bash
+pip install -r requirements.txt
 ```
 
 ## Quick Start
