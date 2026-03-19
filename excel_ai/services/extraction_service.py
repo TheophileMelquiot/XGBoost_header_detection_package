@@ -5,11 +5,6 @@ from typing import Dict
 from ..detector import detect_headers
 
 
-import pandas as pd
-from typing import Dict
-from ..detector import detect_headers
-
-
 def detect_and_load(filepath: str, threshold: float = 0.35):
 
     headers = detect_headers(filepath, threshold)
