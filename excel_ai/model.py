@@ -1,5 +1,4 @@
 # excel_ai/model.py
-
 import joblib
 from functools import lru_cache
 from pathlib import Path
