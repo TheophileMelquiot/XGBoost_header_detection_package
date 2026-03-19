@@ -13,3 +13,6 @@ dependencies = [
     "lightgbm",
     "joblib"
 ]
+
+[tool.setuptools.package-data]
+excel_ai = ["header_detector.pkl"]
