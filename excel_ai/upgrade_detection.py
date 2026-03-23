@@ -123,24 +123,63 @@ def detect_repeating_pattern(values):
 # Fusion de deux lignes header
 # --------------------------------------------------
 
+def is_generic_parent(parent_values):
+    """
+    Returns True if all non-empty parent values are the same string,
+    indicating a single merged cell spanning multiple columns with no
+    meaningful sub-column names (e.g. "tous clients" repeated 4 times).
+    """
+    non_empty = [v for v in parent_values if v not in (None, "", "nan")]
+    if len(non_empty) <= 1:
+        return False
+    return len(set(non_empty)) == 1
+
+
 def merge_headers(parent, child):
+    """
+    Merges parent and child header rows into a single list of column names.
 
+    For merged parent cells (same value repeated across consecutive columns),
+    generates numbered variants like "tous clients 1", "tous clients 2", …
+    instead of concatenating the parent with actual data values.
+
+    For single-column parents, uses the standard "parent child" concatenation.
+    """
     merged = []
+    n = len(parent)
+    i = 0
 
-    for p, c in zip(parent, child):
+    while i < n:
+        p_val = parent[i]
+        c_val = child[i] if i < len(child) else None
 
-        parts = []
+        if p_val in (None, "", "nan"):
+            # No parent value – keep the child value as-is
+            if c_val not in (None, "", "nan"):
+                merged.append(str(c_val).strip())
+            else:
+                merged.append(None)
+            i += 1
+            continue
 
-        if p not in (None, "", "nan"):
-            parts.append(str(p).strip())
+        # Determine how many consecutive columns share this parent value
+        j = i + 1
+        while j < n and parent[j] == p_val:
+            j += 1
 
-        if c not in (None, "", "nan"):
-            parts.append(str(c).strip())
-
-        if parts:
-            merged.append(" ".join(parts))
+        if is_generic_parent(parent[i:j]):
+            # Generic merged cell: produce numbered variants, ignore child
+            label = str(p_val).strip()
+            for k in range(j - i):
+                merged.append(f"{label} {k + 1}")
         else:
-            merged.append(None)
+            # Single column: standard parent + child concatenation
+            parts = [str(p_val).strip()]
+            if c_val not in (None, "", "nan"):
+                parts.append(str(c_val).strip())
+            merged.append(" ".join(parts))
+
+        i = j
 
     return merged
 
