@@ -10,7 +10,7 @@ model = get_model()
 
 
 # --------------------------------------------------
-# Propagation des cellules fusionnées
+# Propagation des cellules fusionnées (fallback)
 # --------------------------------------------------
 
 def expand_merged_cells(values):
@@ -26,6 +26,59 @@ def expand_merged_cells(values):
         expanded.append(last_value)
 
     return expanded
+
+
+# --------------------------------------------------
+# Expansion des cellules fusionnées avec info openpyxl
+# --------------------------------------------------
+
+def get_merged_ranges_for_row(ws, row_idx):
+    """
+    Returns list of (min_col, max_col, value) for merged ranges that
+    include the given row.
+    """
+    result = []
+    for merged_range in ws.merged_cells.ranges:
+        if merged_range.min_row <= row_idx <= merged_range.max_row:
+            cell = ws.cell(row=merged_range.min_row, column=merged_range.min_col)
+            result.append((merged_range.min_col, merged_range.max_col, cell.value))
+    return result
+
+
+def expand_merged_cells_with_ws(row_values, ws, row_idx):
+    """
+    Propagates merged cell values across all columns they span, using
+    openpyxl's merged_cells information.  Returns a list aligned with
+    row_values (same length).
+    """
+    merged_fill = {}
+    for min_col, max_col, value in get_merged_ranges_for_row(ws, row_idx):
+        if value not in (None, "", "nan"):
+            for col in range(min_col, max_col + 1):
+                merged_fill[col] = str(value).strip()
+
+    result = []
+    for col_idx, v in enumerate(row_values, start=1):
+        if col_idx in merged_fill:
+            result.append(merged_fill[col_idx])
+        elif v not in (None, "", "nan"):
+            result.append(str(v).strip())
+        else:
+            result.append(None)
+
+    return result
+
+
+def row_has_merged_cells(ws, row_idx):
+    """
+    Returns True if the given row contains at least one merged range that
+    spans more than one column.
+    """
+    for merged_range in ws.merged_cells.ranges:
+        if (merged_range.min_row <= row_idx <= merged_range.max_row
+                and merged_range.min_col != merged_range.max_col):
+            return True
+    return False
 
 
 # --------------------------------------------------
@@ -98,7 +151,8 @@ def merge_headers(parent, child):
 
 def detect_headers_upgrade(filepath):
 
-    wb = openpyxl.load_workbook(filepath, data_only=True, read_only=True)
+    # read_only must be False to access ws.merged_cells
+    wb = openpyxl.load_workbook(filepath, data_only=True)
 
     results = {}
 
@@ -143,18 +197,13 @@ def detect_headers_upgrade(filepath):
         # Étape 2 : analyse du header détecté
         # --------------------------------------------
 
-        header_values = [c.value for c in ws[best_row]]
+        raw_header_values = [c.value for c in ws[best_row]]
 
-        # filtrer colonnes totalement vides
-        header_values = [
-            v for v in header_values
-            if v not in (None, "", "nan")
-        ]
+        # Expand merged cells using openpyxl info before filtering
+        header_values = expand_merged_cells_with_ws(raw_header_values, ws, best_row)
 
-        header_values = expand_merged_cells(header_values)
-
-        # DEBUG possible
-        # print("HEADER RAW:", header_values)
+        # Non-empty values for pattern analysis
+        non_empty_header = [v for v in header_values if v is not None]
 
         reconstructed_header = None
         header_rows = [best_row]
@@ -163,15 +212,35 @@ def detect_headers_upgrade(filepath):
         # Étape 3 : détecter sous-header
         # --------------------------------------------
 
-        if detect_repeating_pattern(header_values) and best_row > 1:
+        if best_row > 1:
+            parent_row_idx = best_row - 1
 
-            parent_values = [c.value for c in ws[best_row - 1]]
+            # Trigger parent merge if the parent row has multi-column merged
+            # cells (group labels like "tous clients") OR if the current
+            # header row itself shows a repeating sub-header pattern.
+            parent_has_merged = row_has_merged_cells(ws, parent_row_idx)
+            header_is_repeating = detect_repeating_pattern(non_empty_header)
 
-            parent_values = expand_merged_cells(parent_values)
+            if parent_has_merged or header_is_repeating:
 
-            reconstructed_header = merge_headers(parent_values, header_values)
+                raw_parent = [c.value for c in ws[parent_row_idx]]
 
-            header_rows = [best_row - 1, best_row]
+                parent_values = expand_merged_cells_with_ws(
+                    raw_parent, ws, parent_row_idx
+                )
+
+                # Fallback: simple forward-fill if ws info yields nothing
+                if all(v is None for v in parent_values):
+                    parent_values = expand_merged_cells(raw_parent)
+
+                reconstructed_header = merge_headers(parent_values, header_values)
+
+                # Drop fully-empty merged columns
+                reconstructed_header = [
+                    v for v in reconstructed_header if v is not None
+                ]
+
+                header_rows = [parent_row_idx, best_row]
 
         # --------------------------------------------
         # Résultat
@@ -180,7 +249,7 @@ def detect_headers_upgrade(filepath):
         results[sheet_name] = {
             "header_rows": header_rows,
             "confidence": float(best_proba),
-            "columns": reconstructed_header
+            "columns": reconstructed_header if reconstructed_header else non_empty_header
         }
 
     return results
